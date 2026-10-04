@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记回路检查记录</button>
         <button class="btn" type="button" @click="exportRows">导出二次回路检查清单</button>
+        <button class="btn danger" type="button" @click="recycleRows">回收本模块数据</button>
       </div>
     </header>
 
@@ -65,6 +66,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条二次回路检查记录</span>
+      <span v-if="repairNotice" class="warn-text">{{ repairNotice }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -76,20 +78,23 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  moduleRepairCount,
   moduleMeta,
+  recycleModule,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('secondarycircuit')
-const columns = ["检查编号", "所属间隔", "回路类别", "端子排编号", "绝缘电阻", "检查人", "检查日期", "回路状态"]
-const actions = ["提交检查", "判定合格", "提出整改"]
-const statuses = ["待检查", "检查中", "检查合格", "需整改"]
-const stats = [{"label": "待检查回路", "value": 0}, {"label": "检查合格回路", "value": 0}, {"label": "需整改回路", "value": 0}]
+const columns = meta.fields
+const actions = meta.actions
+const statuses = meta.statuses
+const stats = meta.metrics.map((label: string) => ({ label, value: 0 }))
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const repairNotice = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
@@ -106,6 +111,17 @@ function resetFilters() {
 
 function exportRows() {
   downloadEntries(meta.key)
+}
+
+function recycleRows() {
+  const confirmed = window.confirm(`只回收「${meta.name}」这一块的本地数据，其他业务录好的内容不受影响，确认回收？`)
+  if (!confirmed) {
+    return
+  }
+  const result = recycleModule(meta.key)
+  errorMessage.value = ''
+  repairNotice.value = result.message
+  reload()
 }
 
 function openCreate() {
@@ -128,6 +144,10 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    const repaired = moduleRepairCount(meta.key)
+    repairNotice.value = repaired > 0
+      ? `本地存储升级后，本模块有 ${repaired} 行老数据按新结构补填并退回待办，请核对`
+      : ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '二次回路检查列表读取失败'
   }

@@ -1,6 +1,20 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
-import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import {
+  allRows,
+  listRows,
+  migrationReport,
+  resetRows,
+  saveRows,
+  storageVersion,
+} from '@/data/local-store'
+import type { MigrationReport } from '@/data/schema'
+import type {
+  ActionResult,
+  EntryRow,
+  ModuleMeta,
+  OverviewResult,
+  PageResult,
+} from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -61,6 +75,31 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+/**
+ * 回收当前模块的数据：只重置这一块业务，其他模块录好的内容不动。
+ * 页面上的「回收」按钮统一走这里，不允许直接清 localStorage。
+ */
+export function recycleModule(key: string): ActionResult {
+  const meta = moduleMeta(key)
+  resetRows(key)
+  return { ok: true, message: `已回收「${meta.name}」这一块的本地数据，其他业务的数据保持不变` }
+}
+
+/** 读取本地存储按版本搬迁时的报告：哪一版对不上、补填了哪些行都在里面。 */
+export function storageMigrationReport(): MigrationReport | null {
+  return migrationReport()
+}
+
+/** 当前程序认的存储结构版本。 */
+export function storageVersionLabel(): number {
+  return storageVersion()
+}
+
+/** 某一块业务在搬迁中被补填、需要复核的行数（落到该模块的待办清单）。 */
+export function moduleRepairCount(key: string): number {
+  return migrationReport()?.repairedRows[key] ?? 0
+}
+
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']
@@ -89,6 +128,7 @@ export function loadOverview(): OverviewResult {
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
     return {
+      key: meta.key,
       name: meta.name,
       created: entries.length,
       pending: entries.filter((row) => row.pending).length,

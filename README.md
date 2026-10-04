@@ -7,14 +7,23 @@
 结果都持久化在浏览器 `localStorage` 里，刷新或重开浏览器都还在。dev server 已关掉自动打开页面，
 启动后按终端打印的地址手工打开。
 
+本地存储是**带结构版本**的（当前 `v2`，定义集中在 `frontend/src/data/schema.ts`）：读取时会按
+版本把存量数据逐模块、逐行搬到当前结构，新增字段按定义次序补齐、字段顺序保持原样；补填过的行会
+退回该模块的待办清单。遇到认不出的版本或结构，不会整块扔掉，而是登记清楚是哪一版对不上并把原文
+隔离留底（`localStorage` 里 `substation-protection:quarantine:*`）。迁移问题汇总展示在「运营概览」。
+
 ## 目录结构
 
 ```text
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
 │   ├── src/views/            每个业务模块一个页面
-│   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
-│   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
+│   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出、回收
+│   ├── src/data/             模块元数据 / 结构版本定义 / 示例数据 / localStorage 持久化
+│   │   ├── modules.ts        字段、状态、动作的唯一来源（页面与存储共用）
+│   │   ├── schema.ts         存储信封、版本号、逐行补填/搬迁规则
+│   │   ├── local-store.ts    按版本读取、隔离留底、分模块写入与回收
+│   │   └── seed.ts           示例数据
 │   ├── src/stores/           会话与筛选状态
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
 ├── .gitignore
@@ -22,6 +31,14 @@
 ```
 
 ## 启动
+
+本地开发环境一条命令跑通（依赖没装齐会先自动安装，再起 dev server）：
+
+```bash
+make dev
+```
+
+或在 `frontend/` 下分别执行：
 
 ```bash
 cd frontend
@@ -31,11 +48,11 @@ npm run dev
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，需要自己访问。
 
-生产构建：
+测试与生产构建：
 
 ```bash
-cd frontend
-npm run build
+make test     # 或 cd frontend && npm test
+make build    # 或 cd frontend && npm run build
 ```
 
 ## 业务模块
@@ -64,8 +81,13 @@ npm run build
 ## 约定
 
 - 每个模块的页面在 `frontend/src/views/<模块>/index.vue`，页面只负责渲染，读写统一走
-  `frontend/src/api/local-service.ts`。
+  `frontend/src/api/local-service.ts`；页面展示的字段直接取 `meta.fields`，不再各写一份。
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
-  `frontend/src/data/seed.ts`。
+  `frontend/src/data/seed.ts`；存储信封、版本号与补填/搬迁规则集中在
+  `frontend/src/data/schema.ts`，落库结构与读取校验出自同一定义。
+- 给数据行增删字段后：在 `modules.ts` 改字段定义，抬高 `schema.ts` 的 `STORAGE_VERSION`，
+  老浏览器下次读取会自动搬迁；存量字段写成非法值时退回补填并保留原有字段顺序。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `substation-protection:entries` 这一项，或调用 `resetModule(模块)`。
+- 「回收本模块数据」只重置当前这一块业务，其他模块录好的内容不动；想回到全部初始数据，
+  清掉浏览器里 `substation-protection:entries` 这一项（`substation-protection:quarantine:*`
+  是搬迁时的隔离留底，可另行清理），或调用 `resetModule(模块)`。

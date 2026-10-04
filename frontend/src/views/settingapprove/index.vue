@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记审批单</button>
         <button class="btn" type="button" @click="exportRows">导出定值审批清单</button>
+        <button class="btn danger" type="button" @click="recycleRows">回收本模块数据</button>
       </div>
     </header>
 
@@ -65,6 +66,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条定值审批记录</span>
+      <span v-if="repairNotice" class="warn-text">{{ repairNotice }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -76,20 +78,23 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  moduleRepairCount,
   moduleMeta,
+  recycleModule,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('settingapprove')
-const columns = ["审批单号", "关联定值单", "审批层级", "送审人", "审批人", "送审日期", "审批意见", "审批状态"]
-const actions = ["提交送审", "批准定值", "退回修改"]
-const statuses = ["待送审", "审批中", "已批准", "已退回"]
-const stats = [{"label": "待送审审批单", "value": 0}, {"label": "审批中审批单", "value": 0}, {"label": "本月批准数", "value": 0}]
+const columns = meta.fields
+const actions = meta.actions
+const statuses = meta.statuses
+const stats = meta.metrics.map((label: string) => ({ label, value: 0 }))
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const repairNotice = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
@@ -106,6 +111,17 @@ function resetFilters() {
 
 function exportRows() {
   downloadEntries(meta.key)
+}
+
+function recycleRows() {
+  const confirmed = window.confirm(`只回收「${meta.name}」这一块的本地数据，其他业务录好的内容不受影响，确认回收？`)
+  if (!confirmed) {
+    return
+  }
+  const result = recycleModule(meta.key)
+  errorMessage.value = ''
+  repairNotice.value = result.message
+  reload()
 }
 
 function openCreate() {
@@ -128,6 +144,10 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    const repaired = moduleRepairCount(meta.key)
+    repairNotice.value = repaired > 0
+      ? `本地存储升级后，本模块有 ${repaired} 行老数据按新结构补填并退回待办，请核对`
+      : ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '定值审批列表读取失败'
   }

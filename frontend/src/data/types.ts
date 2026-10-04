@@ -34,5 +34,11 @@ export type ActionResult = {
 
 export type OverviewResult = {
   cards: { label: string; value: number }[]
-  modules: { name: string; created: number; pending: number; abnormal: number }[]
+  modules: {
+    key: string
+    name: string
+    created: number
+    pending: number
+    abnormal: number
+  }[]
 }

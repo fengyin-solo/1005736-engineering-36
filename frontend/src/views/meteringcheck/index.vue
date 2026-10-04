@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记核查记录</button>
         <button class="btn" type="button" @click="exportRows">导出计量装置核查清单</button>
+        <button class="btn danger" type="button" @click="recycleRows">回收本模块数据</button>
       </div>
     </header>
 
@@ -65,6 +66,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条计量装置核查记录</span>
+      <span v-if="repairNotice" class="warn-text">{{ repairNotice }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -76,20 +78,23 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  moduleRepairCount,
   moduleMeta,
+  recycleModule,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('meteringcheck')
-const columns = ["核查编号", "计量点名称", "电能表编号", "互感器变比", "误差值", "核查人", "核查日期", "核查状态"]
-const actions = ["提交核查", "判定合格", "标记超差"]
-const statuses = ["待核查", "核查中", "核查合格", "误差超差"]
-const stats = [{"label": "待核查计量点", "value": 0}, {"label": "核查合格计量点", "value": 0}, {"label": "误差超差点数", "value": 0}]
+const columns = meta.fields
+const actions = meta.actions
+const statuses = meta.statuses
+const stats = meta.metrics.map((label: string) => ({ label, value: 0 }))
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const repairNotice = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
@@ -106,6 +111,17 @@ function resetFilters() {
 
 function exportRows() {
   downloadEntries(meta.key)
+}
+
+function recycleRows() {
+  const confirmed = window.confirm(`只回收「${meta.name}」这一块的本地数据，其他业务录好的内容不受影响，确认回收？`)
+  if (!confirmed) {
+    return
+  }
+  const result = recycleModule(meta.key)
+  errorMessage.value = ''
+  repairNotice.value = result.message
+  reload()
 }
 
 function openCreate() {
@@ -128,6 +144,10 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    const repaired = moduleRepairCount(meta.key)
+    repairNotice.value = repaired > 0
+      ? `本地存储升级后，本模块有 ${repaired} 行老数据按新结构补填并退回待办，请核对`
+      : ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '计量装置核查列表读取失败'
   }
