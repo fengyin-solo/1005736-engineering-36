@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记校验记录</button>
         <button class="btn" type="button" @click="exportRows">导出保护校验清单</button>
+        <button class="btn ghost" type="button" @click="recycleRows">回收本模块数据</button>
       </div>
     </header>
 
@@ -77,6 +78,7 @@ import {
   downloadEntries,
   listEntries,
   moduleMeta,
+  resetModule,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
@@ -106,6 +108,19 @@ function resetFilters() {
 
 function exportRows() {
   downloadEntries(meta.key)
+}
+
+function recycleRows() {
+  errorMessage.value = ''
+  if (!window.confirm('回收会把本模块数据恢复为示例数据，其他模块已录好的数据不受影响，确定继续吗？')) {
+    return
+  }
+  try {
+    resetModule(meta.key)
+    reload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '回收本模块数据失败'
+  }
 }
 
 function openCreate() {

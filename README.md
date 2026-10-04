@@ -14,7 +14,7 @@
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
 │   ├── src/views/            每个业务模块一个页面
 │   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
-│   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
+│   ├── src/data/             模块元数据 / 示例数据 / 存储结构定义（schema.ts）/ localStorage 持久化
 │   ├── src/stores/           会话与筛选状态
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
 ├── .gitignore
@@ -22,6 +22,14 @@
 ```
 
 ## 启动
+
+本地开发一条命令跑通（先装齐依赖，再起 dev server）：
+
+```bash
+make dev
+```
+
+也可以分步执行：
 
 ```bash
 cd frontend
@@ -31,11 +39,16 @@ npm run dev
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，需要自己访问。
 
-生产构建：
+上线前的生产构建（同样会先确认依赖装齐）：
 
 ```bash
-cd frontend
-npm run build
+make build
+```
+
+数据层的行为测试（存储版本迁移、字段补齐、回收范围等）：
+
+```bash
+make test
 ```
 
 ## 业务模块
@@ -68,4 +81,19 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `substation-protection:entries` 这一项，或调用 `resetModule(模块)`。
+- 想回到初始数据：点页面上的「回收本模块数据」（只重置当前模块，其它模块已录好的数据不动），
+  或清掉浏览器里 `substation-protection:entries` 这一项。
+
+## 本地存储的结构版本
+
+`localStorage` 里的数据带结构版本号，结构的唯一定义在 `frontend/src/data/schema.ts`
+（存储键、版本、字段次序、迁移路径），读、写、种子三方都引用这一份：
+
+- **按版本搬迁**：老版本（无版本号的平铺结构）读出时自动搬到当前版本，搬完立刻按当前版本
+  落库，刷新后读到的字段与落库那份一致。
+- **缺字段补齐**：新加的字段在老数据里没有时，按模块定义里的次序补成空串；缺的 `abnormal`
+  补 `false`、`pending` 按状态推导。
+- **非法值退回补填**：存量字段写成对象、数组、`null` 这类非法值时退回空串，整行标成待办，
+  落到各模块的待办清单里等值班员补填；行内字段始终保持定义里的次序。
+- **认不出的结构不整块扔**：版本号对不上或内容损坏时，页面报出具体是哪一版对不上，
+  存量数据原样保留，不会被静默清掉。
